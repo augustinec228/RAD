@@ -1,0 +1,69 @@
+import datetime
+import aiogram.utils.markdown as md
+from aiogram import Bot, types
+from aiogram.dispatcher import Dispatcher
+from aiogram.utils import executor
+
+
+# список людей и их расписание на каждый день недели
+schedule = {0: {'morning': 'Егор', 'evening': 'Даня'},
+            1: {'morning': 'Даня', 'evening': 'Мама'},
+            2: {'morning': 'Егор', 'evening': 'Мама'},
+            3: {'morning': 'Даня', 'evening': 'Даня'},
+            4: {'morning': 'Егор', 'evening': 'Мама'},
+            5: {'morning': 'Даня', 'evening': 'Мама'},
+            6: {'morning': 'Егор', 'evening': 'Мама'}}
+
+
+# создаем бота и диспетчер
+bot = Bot(token='5322794757:AAFLfx8galyt9r58Bd61_agvGJgSOhVvVuA')
+dp = Dispatcher(bot)
+
+
+# команда /start выводит приветственное сообщение с расписанием
+@dp.message_handler(commands=['start'])
+async def send_welcome(message: types.Message):
+    # получаем текущий день недели и расписание на этот день
+    today = datetime.datetime.today().weekday()
+    today_schedule = schedule[today]
+
+    # форматируем сообщение с помощью markdown
+    text = md.text(
+        "Расписание на сегодня:",
+        md.text(f"\n\nДень недели: {day_of_week(today)}\n\n"),
+        md.text(f"(Утром: {today_schedule['morning']})\n (Вечером: {today_schedule['evening']})")
+    )
+
+    # отправляем сообщение
+    await message.answer(text)
+
+
+# команда /today выводит, кто идет гулять сегодня
+@dp.message_handler(commands=['today'])
+async def send_today(message: types.Message):
+    # получаем текущий день недели и расписание на этот день
+    today = datetime.datetime.today().weekday()
+    today_schedule = schedule[today]
+
+    # формируем сообщение
+    text = f"Сегодня ({day_of_week(today)}) утром идет {today_schedule['morning']}, а вечером - {today_schedule['evening']}"
+
+    # отправляем сообщение
+    await message.answer(text)
+
+
+# функция возвращает название дня недели по его номеру
+def day_of_week(day):
+    days = {0: 'Понедельник',
+            1: 'Вторник',
+            2: 'Среда',
+            3: 'Четверг',
+            4: 'Пятница',
+            5: 'Суббота',
+            6: 'Воскресенье'}
+    return days.get(day)
+
+
+# запускаем бота
+if __name__ == '__main__':
+    executor.start_polling(dp, skip_updates=True)
