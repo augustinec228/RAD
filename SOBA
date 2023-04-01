@@ -1,69 +1,88 @@
 import datetime
+import asyncio
 import aiogram.utils.markdown as md
-from aiogram import Bot, types
-from aiogram.dispatcher import Dispatcher
+from aiogram import Bot, Dispatcher, types
+from aiogram.contrib.fsm_storage.memory import MemoryStorage
+from aiogram.dispatcher import FSMContext
+from aiogram.dispatcher.filters import Command
+from aiogram.dispatcher.filters.state import State, StatesGroup
 from aiogram.utils import executor
 
+bot_token = '5322794757:AAFLfx8galyt9r58Bd61_agvGJgSOhVvVuA'
+bot = Bot(token=bot_token)
+storage = MemoryStorage()
+dp = Dispatcher(bot, storage=storage)
+users_id = [1607382900, 5182705375, 548736394, 981379050]   #Егор, Мама, Лиза, Папа, 
 
-# список людей и их расписание на каждый день недели
-schedule = {0: {'morning': 'Егор', 'evening': 'Даня'},
-            1: {'morning': 'Даня', 'evening': 'Мама'},
-            2: {'morning': 'Егор', 'evening': 'Мама'},
-            3: {'morning': 'Даня', 'evening': 'Даня'},
-            4: {'morning': 'Егор', 'evening': 'Мама'},
-            5: {'morning': 'Даня', 'evening': 'Мама'},
-            6: {'morning': 'Егор', 'evening': 'Мама'}}
+class Schedule(StatesGroup):
+    who = State()
 
+weekdays = {
+    0: {'morning': 'Егор', 'evening': 'Даня/Лиза'}, 
+    1: {'morning': 'Даня/Лиза', 'evening': 'Мама/Папа'}, 
+    2: {'morning': 'Егор', 'evening': 'Мама/Папа'}, 
+    3: {'morning': 'Даня/Лиза', 'evening': 'Даня/Лиза'}, 
+    4: {'morning': 'Егор', 'evening': 'Мама/Папа'}, 
+    5: {'morning': 'Даня/Лиза', 'evening': 'Мама/Папа'}, 
+    6: {'morning': 'Егор', 'evening': 'Мама/Папа'}
+}
 
-# создаем бота и диспетчер
-bot = Bot(token='5322794757:AAFLfx8galyt9r58Bd61_agvGJgSOhVvVuA')
-dp = Dispatcher(bot)
+@dp.message_handler(Command("start"))
+async def cmd_start(message: types.Message):
+    keyboard = types.InlineKeyboardMarkup()
+    keyboard.add(types.InlineKeyboardButton(text="Кто сегодня?", callback_data="who_today"))
+    await message.answer("Привет!\nЭтот бот покажет тебе, кто должен идти гулять сегодня утром и вечером.\nНажми на кнопку 'Кто сегодня?' для получения информации.", reply_markup=keyboard)
 
+@dp.message_handler(commands=['ras'])
+async def send_full_schedule(message: types.Message):
+    schedule_str = ""
+    for day in weekdays.keys():
+        day_name = get_day_of_week(day)
+        schedule_today = weekdays[day]
+        schedule_str += f"{day_name}:\n"
+        schedule_str += f"Утром - {schedule_today['morning']} \n"
+        schedule_str += f"Вечером - {schedule_today['evening']} \n\n"
+    await message.answer(md.text(schedule_str))
 
-# команда /start выводит приветственное сообщение с расписанием
-@dp.message_handler(commands=['start'])
-async def send_welcome(message: types.Message):
-    # получаем текущий день недели и расписание на этот день
-    today = datetime.datetime.today().weekday()
-    today_schedule = schedule[today]
+async def send_scheduled_messages():
+    while True:
+        now = datetime.datetime.now()
+        if now.minute == 0 and now.hour == 10:
+            for user_id in users_id:
+                schedule_today = weekdays[now.weekday()]
+                await bot.send_message(user_id, f"❗️ВРЕМЯ ГУЛЯТЬ❗️\n\n"
+                    f'У нас сегодня {get_day_of_week()}. \nГулять утром идет {schedule_today["morning"]}.')
+        elif now.minute == 0 and now.hour == 21:
+            for user_id in users_id:
+                schedule_today = weekdays[now.weekday()]
+                await bot.send_message(user_id, f"❗️ВРЕМЯ ГУЛЯТЬ❗️\n\n"
+                    f"❗️ВРЕМЯ ГУЛЯТЬ❗️\n\n"
+                    f'У нас сегодня {get_day_of_week()}. \nГулять вечером идет {schedule_today["evening"]}.')
+        await asyncio.sleep(60)
 
-    # форматируем сообщение с помощью markdown
-    text = md.text(
-        "Расписание на сегодня:",
-        md.text(f"\n\nДень недели: {day_of_week(today)}\n\n"),
-        md.text(f"(Утром: {today_schedule['morning']})\n (Вечером: {today_schedule['evening']})")
+def get_day_of_week(day = None):
+    if day is None:
+        day = datetime.datetime.today().weekday()
+    days_of_week = {
+        0: 'Понедельник', 1: 'Вторник', 2: 'Среда', 3: 'Четверг', 4: 'Пятница', 5: 'Суббота', 6: 'Воскресенье'
+    }
+    return days_of_week[day]
+
+@dp.callback_query_handler(text="who_today", state="*")
+async def callback_who_today(call: types.CallbackQuery, state: FSMContext):
+    await bot.answer_callback_query(call.id)
+    schedule_today = weekdays[datetime.datetime.today().weekday()]
+    await call.message.answer(
+        f"📅 Cегодня -  {get_day_of_week()}:\n\n"
+        f"Утром - {schedule_today['morning']} \n"
+        f"Вечером - {schedule_today['evening']} \n\n"
+        "Приятной прогулки, пупсик!\n"
+        f"Стоит напоминание на 10 утра и на 9 вечера"
+
     )
+    await state.finish()
 
-    # отправляем сообщение
-    await message.answer(text)
-
-
-# команда /today выводит, кто идет гулять сегодня
-@dp.message_handler(commands=['today'])
-async def send_today(message: types.Message):
-    # получаем текущий день недели и расписание на этот день
-    today = datetime.datetime.today().weekday()
-    today_schedule = schedule[today]
-
-    # формируем сообщение
-    text = f"Сегодня ({day_of_week(today)}) утром идет {today_schedule['morning']}, а вечером - {today_schedule['evening']}"
-
-    # отправляем сообщение
-    await message.answer(text)
-
-
-# функция возвращает название дня недели по его номеру
-def day_of_week(day):
-    days = {0: 'Понедельник',
-            1: 'Вторник',
-            2: 'Среда',
-            3: 'Четверг',
-            4: 'Пятница',
-            5: 'Суббота',
-            6: 'Воскресенье'}
-    return days.get(day)
-
-
-# запускаем бота
 if __name__ == '__main__':
+    loop = asyncio.get_event_loop()
+    loop.create_task(send_scheduled_messages()) # добавляем функцию send_scheduled_messages в очередь заданий asyncio
     executor.start_polling(dp, skip_updates=True)
